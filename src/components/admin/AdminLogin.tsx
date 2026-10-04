@@ -1,36 +1,277 @@
-import React, { useState } from 'react';
-import { ShieldCheck, Lock, Sparkles, AlertCircle, ArrowRight, UserCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  AlertCircle, 
+  ArrowRight, 
+  CheckCircle2, 
+  RefreshCw, 
+  Mail, 
+  ShieldCheck 
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ViewMode } from '../../types';
+import { ADMIN_EMAIL } from '../../config/admin';
 
 interface AdminLoginProps {
   onNavigate: (view: ViewMode) => void;
 }
 
+const STORAGE_ATTEMPTS_KEY = 'zh_admin_failed_attempts';
+const STORAGE_LOCKOUT_KEY = 'zh_admin_lockout_until';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
-  const { user, isAdmin, signInWithGoogle, quickAdminLogin, logout, adminEmail } = useAuth();
+  const { 
+    user, 
+    isAdmin, 
+    isOwnerEmail, 
+    emailVerified, 
+    signInWithEmail, 
+    resendVerificationEmail, 
+    reloadUser, 
+    logout 
+  } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleGoogleSignIn = async () => {
-    setError('');
-    setLoading(true);
+  const [failedAttempts, setFailedAttempts] = useState<number>(() => {
     try {
-      await signInWithGoogle();
-      onNavigate('admin-dashboard');
+      return Number(sessionStorage.getItem(STORAGE_ATTEMPTS_KEY)) || 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // Check if non-admin user is logged in
+  useEffect(() => {
+    if (user && user.email && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      // Requirement 3: If any other logged-in user tries to open the admin route, 
+      // redirect them to the storefront with no hint that an admin panel exists.
+      logout().then(() => {
+        onNavigate('home');
+      });
+    }
+  }, [user, logout, onNavigate]);
+
+  // Check lockout on mount and tick countdown
+  useEffect(() => {
+    const checkLockout = () => {
+      try {
+        const lockoutUntil = Number(sessionStorage.getItem(STORAGE_LOCKOUT_KEY)) || 0;
+        const now = Date.now();
+        if (lockoutUntil > now) {
+          setLockoutRemaining(Math.ceil((lockoutUntil - now) / 1000));
+        } else {
+          setLockoutRemaining(0);
+        }
+      } catch {
+        setLockoutRemaining(0);
+      }
+    };
+
+    checkLockout();
+    const interval = setInterval(checkLockout, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleFailedAttempt = () => {
+    const nextAttempts = failedAttempts + 1;
+    setFailedAttempts(nextAttempts);
+    try {
+      sessionStorage.setItem(STORAGE_ATTEMPTS_KEY, String(nextAttempts));
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (nextAttempts >= MAX_ATTEMPTS) {
+      const until = Date.now() + LOCKOUT_DURATION_MS;
+      try {
+        sessionStorage.setItem(STORAGE_LOCKOUT_KEY, String(until));
+      } catch (e) {
+        console.warn(e);
+      }
+      setLockoutRemaining(Math.ceil(LOCKOUT_DURATION_MS / 1000));
+      setError('Too many failed attempts. For security, access has been temporarily locked.');
+    } else {
+      const remaining = MAX_ATTEMPTS - nextAttempts;
+      setError(`Invalid credentials. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining before temporary lock.`);
+    }
+  };
+
+  const handleClearLockout = () => {
+    setFailedAttempts(0);
+    setLockoutRemaining(0);
+    try {
+      sessionStorage.removeItem(STORAGE_ATTEMPTS_KEY);
+      sessionStorage.removeItem(STORAGE_LOCKOUT_KEY);
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (lockoutRemaining > 0) return;
+    setError('');
+
+    if (!email.trim() || !password) {
+      setError('Please provide your admin email and password.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const signedInUser = await signInWithEmail(email, password);
+
+      // Verify owner authorization
+      if (!signedInUser.email || signedInUser.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+        // Not authorized owner: log them out and redirect to storefront silently
+        await logout();
+        handleClearLockout();
+        onNavigate('home');
+        return;
+      }
+
+      // Successful owner credentials
+      handleClearLockout();
+
+      if (signedInUser.emailVerified) {
+        onNavigate('admin-dashboard');
+      }
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Google authentication could not be completed.');
+      console.error('Sign-in error:', err);
+      const code = err.code || '';
+      if (code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+        handleFailedAttempt();
+      } else if (code === 'auth/too-many-requests') {
+        setError('Too many requests. Please wait before trying again.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('Network connectivity error. Please check your internet connection.');
+      } else {
+        handleFailedAttempt();
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickAdmin = () => {
-    quickAdminLogin();
-    onNavigate('admin-dashboard');
+  const handleResendVerification = async () => {
+    setResending(true);
+    setError('');
+    try {
+      await resendVerificationEmail();
+      setVerificationSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Could not send verification email. Please try again shortly.');
+    } finally {
+      setResending(false);
+    }
   };
 
+  const handleCheckVerification = async () => {
+    setCheckingStatus(true);
+    setError('');
+    try {
+      const isNowVerified = await reloadUser();
+      if (isNowVerified) {
+        onNavigate('admin-dashboard');
+      } else {
+        setError('Email is not verified yet. Please check your inbox or spam folder for the link.');
+      }
+    } catch (err: any) {
+      setError('Error refreshing status. Please retry.');
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  // View state: Owner authenticated but email not verified yet
+  if (user && isOwnerEmail && !emailVerified) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-20">
+        <div className="bg-white rounded-3xl border border-[#EFECE6] p-8 shadow-sm space-y-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto text-amber-600">
+            <Mail className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#B89047]">
+              Security Verification Step
+            </span>
+            <h1 className="font-serif text-2xl font-normal text-zinc-900">
+              Email Verification Required
+            </h1>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Signed in as <strong>{user.email}</strong>. In accordance with security protocol, your owner email must be verified before administrative access is granted.
+            </p>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2 text-left">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {verificationSent && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-center gap-2 text-left">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>Verification email sent! Check your inbox or spam folder.</span>
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={handleCheckVerification}
+              disabled={checkingStatus}
+              className="w-full py-3.5 px-4 bg-[#1A1A18] hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs"
+            >
+              <RefreshCw className={`w-4 h-4 text-[#DFBA73] ${checkingStatus ? 'animate-spin' : ''}`} />
+              <span>{checkingStatus ? 'Checking Status...' : 'I Have Verified (Check Status)'}</span>
+            </button>
+
+            <button
+              onClick={handleResendVerification}
+              disabled={resending}
+              className="w-full py-2.5 px-4 bg-white border border-[#E5E0D8] hover:bg-zinc-50 text-zinc-800 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+            >
+              {resending ? 'Sending...' : 'Resend Verification Email'}
+            </button>
+          </div>
+
+          <div className="pt-4 border-t border-[#F2EFE9] flex items-center justify-between text-xs">
+            <button
+              onClick={logout}
+              className="text-zinc-500 hover:text-zinc-900 underline cursor-pointer"
+            >
+              Sign Out
+            </button>
+            <button
+              onClick={() => onNavigate('home')}
+              className="text-zinc-500 hover:text-zinc-900 underline cursor-pointer"
+            >
+              Return to Storefront
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // View state: Owner already verified and signed in
   if (isAdmin) {
     return (
       <div className="max-w-md mx-auto px-4 py-20 text-center">
@@ -41,26 +282,32 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
           Administrator Verified
         </h2>
         <p className="text-xs text-zinc-500 mb-6">
-          Logged in as <strong>{user?.email || adminEmail}</strong> with full administrative privileges.
+          Authenticated as <strong>{user?.email}</strong>.
         </p>
         <div className="flex flex-col gap-3">
           <button
             onClick={() => onNavigate('admin-dashboard')}
             className="w-full py-3.5 px-4 bg-[#1A1A18] text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors cursor-pointer"
           >
-            <span>Proceed to Admin Dashboard</span>
+            <span>Proceed to Admin Console</span>
             <ArrowRight className="w-4 h-4 text-[#DFBA73]" />
           </button>
           <button
             onClick={logout}
-            className="text-xs text-zinc-500 hover:text-zinc-800 underline py-1"
+            className="text-xs text-zinc-500 hover:text-zinc-800 underline py-1 cursor-pointer"
           >
-            Sign out of Admin
+            Sign Out
           </button>
         </div>
       </div>
     );
   }
+
+  const formatLockoutTimer = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
@@ -72,53 +319,98 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
             <Lock className="w-6 h-6" />
           </div>
           <span className="text-[11px] font-semibold uppercase tracking-widest text-[#B89047]">
-            Authorized Personnel Only
+            Authorized Merchant Access
           </span>
           <h1 className="font-serif text-2xl sm:text-3xl font-normal text-zinc-900">
-            Zarorat Hub Admin Portal
+            Zarorat Hub Admin
           </h1>
           <p className="text-xs text-zinc-500">
-            Secure administrative control center for catalog, variants, inventory, and order fulfillment.
+            Enter your owner credentials to access the administrative control center.
           </p>
         </div>
 
-        {error && (
+        {/* Lockout Warning */}
+        {lockoutRemaining > 0 && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 space-y-1 text-center">
+            <span className="font-semibold block">Access Temporarily Locked</span>
+            <p>Too many failed attempts. Please wait <strong>{formatLockoutTimer(lockoutRemaining)}</strong> before attempting to sign in again.</p>
+          </div>
+        )}
+
+        {/* Error message */}
+        {error && lockoutRemaining === 0 && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        <div className="space-y-3 pt-2">
-          {/* Quick Admin Access (Authorized Owner) */}
-          <button
-            onClick={handleQuickAdmin}
-            className="w-full py-3.5 px-4 bg-[#1A1A18] hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-          >
-            <UserCheck className="w-4 h-4 text-[#DFBA73]" />
-            <span>Enter as Admin ({adminEmail})</span>
-          </button>
+        {/* Login Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-1.5">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="owner@domain.com"
+              required
+              disabled={loading || lockoutRemaining > 0}
+              className="w-full px-3.5 py-2.5 bg-[#FBFBF9] border border-[#E5E0D8] rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-[#B89047] disabled:opacity-50"
+            />
+          </div>
 
-          {/* Google Sign In */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-1.5">
+              Password
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                required
+                disabled={loading || lockoutRemaining > 0}
+                className="w-full px-3.5 py-2.5 pr-10 bg-[#FBFBF9] border border-[#E5E0D8] rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-[#B89047] disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
           <button
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className="w-full py-3 px-4 bg-white hover:bg-zinc-50 border border-[#E5E0D8] text-zinc-800 rounded-xl text-xs font-medium flex items-center justify-center gap-3 transition-colors cursor-pointer"
+            type="submit"
+            disabled={loading || lockoutRemaining > 0}
+            className="w-full py-3.5 px-4 bg-[#1A1A18] hover:bg-zinc-800 disabled:bg-zinc-400 text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:cursor-not-allowed"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            <span>{loading ? 'Authenticating...' : 'Sign in with Google Account'}</span>
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Verifying Credentials...</span>
+              </>
+            ) : (
+              <>
+                <span>Sign In to Console</span>
+                <ArrowRight className="w-4 h-4 text-[#DFBA73]" />
+              </>
+            )}
           </button>
-        </div>
+        </form>
 
         <div className="pt-4 border-t border-[#F2EFE9] text-center">
           <button
             onClick={() => onNavigate('home')}
-            className="text-xs text-zinc-500 hover:text-zinc-900 underline"
+            className="text-xs text-zinc-500 hover:text-zinc-900 underline cursor-pointer"
           >
             ← Return to Customer Storefront
           </button>

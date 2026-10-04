@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Package, 
@@ -12,12 +12,13 @@ import {
   ExternalLink, 
   CheckCircle2, 
   Clock, 
-  ArrowRight,
+  ArrowRight, 
   ShieldCheck,
   Plus
 } from 'lucide-react';
 import { Product, Category, Order, ViewMode } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { ProductManagement } from './ProductManagement';
 import { OrderManagement } from './OrderManagement';
 import { InventoryManagement } from './InventoryManagement';
@@ -39,7 +40,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNavigate,
 }) => {
   const { user, logout, adminEmail } = useAuth();
+  const { showToast } = useCart();
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'inventory' | 'categories'>('overview');
+
+  // Inactivity auto sign-out after 30 minutes (1,800,000 ms)
+  useEffect(() => {
+    const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+    let timerId: NodeJS.Timeout;
+
+    const handleTimeout = async () => {
+      try {
+        await logout();
+      } catch (err) {
+        console.warn('Logout error on inactivity:', err);
+      }
+      showToast('Signed out automatically after 30 minutes of inactivity.', 'info');
+      onNavigate('home');
+    };
+
+    const resetTimer = () => {
+      clearTimeout(timerId);
+      timerId = setTimeout(handleTimeout, INACTIVITY_TIMEOUT_MS);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(ev => window.addEventListener(ev, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      clearTimeout(timerId);
+      events.forEach(ev => window.removeEventListener(ev, resetTimer));
+    };
+  }, [logout, onNavigate, showToast]);
 
   // Calculated Metrics
   const totalSales = orders.reduce((acc, o) => acc + (o.status !== 'cancelled' ? o.total : 0), 0);
@@ -92,10 +124,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   await logout();
                   onNavigate('home');
                 }}
-                className="p-1.5 text-zinc-400 hover:text-red-400 transition-colors"
-                title="Sign out of Admin"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-red-950/60 hover:text-red-300 text-zinc-300 rounded-xl transition-colors cursor-pointer border border-zinc-700 hover:border-red-900 font-medium text-xs"
+                title="Sign out of Admin Console"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
               </button>
             </div>
 

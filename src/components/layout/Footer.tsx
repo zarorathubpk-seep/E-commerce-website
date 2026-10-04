@@ -265,15 +265,6 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onSelectCategory }) 
                   Terms of Commerce
                 </span>
               </li>
-              <li className="pt-2">
-                <button
-                  onClick={() => onNavigate('admin-login')}
-                  className="text-xs text-[#DFBA73] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Administrative Access</span>
-                </button>
-              </li>
             </ul>
           </div>
 
@@ -282,15 +273,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onSelectCategory }) 
 
       {/* Bottom Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between text-xs text-zinc-500 gap-4">
-        <div>
-          © {new Date().getFullYear()} Zarorat Hub Inc. All rights reserved.
+        <div className="flex items-center gap-3">
+          <span>© {new Date().getFullYear()} Zarorat Hub Inc. All rights reserved.</span>
+          <span>•</span>
+          <button
+            onClick={() => onNavigate('admin-login')}
+            className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
+          >
+            Admin Console
+          </button>
         </div>
         <div className="flex items-center gap-6">
-          <span>Curated in Paris & New York</span>
-          <span>•</span>
           <span>Worldwide Fulfillment</span>
           <span>•</span>
-          <span className="text-[#DFBA73]">Gold Standard Living</span>
+          <span className="text-[#DFBA73]">Verified Quality</span>
         </div>
       </div>
     </footer>

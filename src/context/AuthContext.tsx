@@ -1,32 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, onAuthStateChanged, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider, fbSignOut } from '../lib/firebase';
+import { 
+  User, 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  signOut as fbSignOut,
+  sendEmailVerification
+} from 'firebase/auth';
+import { auth } from '../lib/firebase';
+import { ADMIN_EMAIL } from '../config/admin';
 
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
+  isOwnerEmail: boolean;
+  emailVerified: boolean;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  quickAdminLogin: () => void;
+  signInWithEmail: (email: string, pass: string) => Promise<User>;
+  resendVerificationEmail: () => Promise<void>;
+  reloadUser: () => Promise<boolean>;
   logout: () => Promise<void>;
   adminEmail: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_STORAGE_KEY = 'aurelia_admin_override_v1';
-const BOOTSTRAPPED_ADMIN_EMAIL = 'mralexander461@gmail.com';
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isQuickAdmin, setIsQuickAdmin] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(ADMIN_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -36,22 +36,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const signInWithGoogle = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Google sign-in error:', error);
-      throw error;
+  const signInWithEmail = async (email: string, pass: string): Promise<User> => {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    setUser(cred.user);
+    return cred.user;
+  };
+
+  const resendVerificationEmail = async (): Promise<void> => {
+    if (auth.currentUser) {
+      await sendEmailVerification(auth.currentUser);
     }
   };
 
-  const quickAdminLogin = () => {
-    setIsQuickAdmin(true);
-    try {
-      localStorage.setItem(ADMIN_STORAGE_KEY, 'true');
-    } catch (e) {
-      console.warn(e);
+  const reloadUser = async (): Promise<boolean> => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      const updated = auth.currentUser;
+      setUser({ ...updated });
+      return Boolean(updated.emailVerified);
     }
+    return false;
   };
 
   const logout = async () => {
@@ -60,34 +64,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.warn('Signout error:', e);
     }
-    setIsQuickAdmin(false);
-    try {
-      localStorage.removeItem(ADMIN_STORAGE_KEY);
-    } catch (e) {
-      console.warn(e);
-    }
+    setUser(null);
   };
 
-  const isAdmin = 
-    isQuickAdmin || 
-    (user !== null && (
-      user.email === BOOTSTRAPPED_ADMIN_EMAIL ||
-      user.email?.endsWith('@zarorathub.com') ||
-      user.email === 'admin@zarorathub.com' ||
-      user.email?.endsWith('@aurelialiving.com') ||
-      user.email === 'admin@aurelialiving.com'
-    ));
+  const isOwnerEmail = Boolean(
+    user && 
+    user.email && 
+    user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+  );
+
+  const emailVerified = Boolean(user && user.emailVerified);
+
+  // Admin access is granted ONLY if user is logged in, their email matches ADMIN_EMAIL exactly, and their email is verified
+  const isAdmin = Boolean(isOwnerEmail && emailVerified);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         isAdmin,
+        isOwnerEmail,
+        emailVerified,
         loading,
-        signInWithGoogle,
-        quickAdminLogin,
+        signInWithEmail,
+        resendVerificationEmail,
+        reloadUser,
         logout,
-        adminEmail: BOOTSTRAPPED_ADMIN_EMAIL,
+        adminEmail: ADMIN_EMAIL,
       }}
     >
       {children}

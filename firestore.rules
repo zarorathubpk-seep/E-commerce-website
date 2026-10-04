@@ -5,37 +5,39 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'mralexander461@gmail.com' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+    function isOwnerAdmin() {
+      return isSignedIn() && 
+        request.auth.token.email == 'mralexander461@gmail.com' &&
+        request.auth.token.email_verified == true;
     }
 
+    // Anyone can read products; only verified owner admin can create, update, or delete products and inventory
     match /products/{productId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants', 'updatedAt'])
-      );
+      allow create, update, delete: if isOwnerAdmin();
     }
 
+    // Anyone can read categories; only verified owner admin can create, update, or delete
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update, delete: if isOwnerAdmin();
     }
 
+    // Anyone can read departments; only verified owner admin can create, update, or delete
+    match /departments/{departmentId} {
+      allow read: if true;
+      allow create, update, delete: if isOwnerAdmin();
+    }
+
+    // Customers can create an order but cannot read, update, or delete other people's orders.
+    // Only the admin can read all orders and update order status.
     match /orders/{orderId} {
       allow create: if true;
-      allow read: if true;
-      allow update, delete: if isAdmin();
+      allow read: if isOwnerAdmin() || (isSignedIn() && resource.data.customerEmail == request.auth.token.email);
+      allow update, delete: if isOwnerAdmin();
     }
 
-    match /admins/{adminId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
+    // Everything else is denied by default
     match /{document=**} {
       allow read, write: if false;
     }

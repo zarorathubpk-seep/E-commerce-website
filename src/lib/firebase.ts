@@ -1,5 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword,
+  signOut as fbSignOut,
+  sendEmailVerification,
+  sendPasswordResetEmail
+} from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -13,6 +21,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+export { signInWithEmailAndPassword, fbSignOut, sendEmailVerification, sendPasswordResetEmail };
 
 export enum OperationType {
   CREATE = 'create',
@@ -74,4 +83,4 @@ export async function testConnection() {
 // Initial test connection call as mandated by skill
 testConnection();
 
-export { signInWithPopup, fbSignOut };
+export { signInWithPopup };

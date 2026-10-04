@@ -16,10 +16,11 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { initializeStoreData, getProducts, getCategories, getOrders } from './services/storeService';
 import { Product, Category, Order, ViewMode } from './types';
 import { Sparkles, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { ADMIN_EMAIL } from './config/admin';
 
 const AppContent: React.FC = () => {
   const { toast } = useCart();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin, loading: authLoading, logout } = useAuth();
 
   const [currentView, setCurrentView] = useState<ViewMode>('home');
   const [viewParam, setViewParam] = useState<string | undefined>(undefined);
@@ -31,14 +32,16 @@ const AppContent: React.FC = () => {
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize store and fetch data from Firestore
+  // Initialize public store catalog from Firestore
   const loadStoreData = async () => {
     try {
       const init = await initializeStoreData();
       setProducts(init.products);
       setCategories(init.categories);
-      const fetchedOrders = await getOrders();
-      setOrders(fetchedOrders);
+      if (isAdmin) {
+        const fetchedOrders = await getOrders();
+        setOrders(fetchedOrders);
+      }
     } catch (e) {
       console.warn('Initialization error:', e);
     } finally {
@@ -50,13 +53,50 @@ const AppContent: React.FC = () => {
     loadStoreData();
   }, []);
 
+  // When admin logs in, load orders securely
+  useEffect(() => {
+    if (isAdmin) {
+      getOrders().then(setOrders).catch(console.warn);
+    }
+  }, [isAdmin]);
+
+  // Route guard on user state changes
+  useEffect(() => {
+    if (currentView.startsWith('admin-')) {
+      if (user && user.email && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+        // Requirement 3: If any other logged-in user tries to open the admin route, 
+        // redirect them to the storefront with no hint that an admin panel exists.
+        logout().finally(() => {
+          setCurrentView('home');
+          setViewParam(undefined);
+        });
+      } else if (!isAdmin && currentView !== 'admin-login') {
+        setCurrentView('admin-login');
+        setViewParam(undefined);
+      }
+    }
+  }, [user, isAdmin, currentView, logout]);
+
   const handleNavigate = (view: ViewMode, param?: string) => {
-    // Admin route protection
-    if (view.startsWith('admin-') && view !== 'admin-login' && !isAdmin) {
-      setCurrentView('admin-login');
-      setViewParam(undefined);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
+    // If navigating to admin route
+    if (view.startsWith('admin-')) {
+      // Check if user is signed in with unauthorized email
+      if (user && user.email && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+        logout().finally(() => {
+          setCurrentView('home');
+          setViewParam(undefined);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        return;
+      }
+
+      // If not fully verified admin
+      if (!isAdmin && view !== 'admin-login') {
+        setCurrentView('admin-login');
+        setViewParam(undefined);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
     }
 
     setCurrentView(view);
@@ -183,7 +223,7 @@ const AppContent: React.FC = () => {
               <MyOrdersPage onNavigate={handleNavigate} />
             )}
 
-            {currentView === 'admin-login' && (
+            {currentView.startsWith('admin-') && !isAdmin && (
               <AdminLogin onNavigate={handleNavigate} />
             )}
 

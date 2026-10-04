@@ -105,13 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
               Track Orders
             </button>
             <span>|</span>
-            <button 
-              onClick={() => onNavigate(isAdmin ? 'admin-dashboard' : 'admin-login')}
-              className="flex items-center gap-1 hover:text-[#DFBA73] transition-colors cursor-pointer text-xs"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#DFBA73]" />
-              <span>{isAdmin ? 'Admin Console' : 'Merchant Portal'}</span>
-            </button>
+            <span className="text-zinc-400">Customer Support</span>
           </div>
         </div>
       </div>
@@ -281,17 +275,14 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
-            {/* User / Orders / Admin */}
+            {/* User / Orders */}
             <button
-              onClick={() => onNavigate(isAdmin ? 'admin-dashboard' : 'my-orders')}
+              onClick={() => onNavigate('my-orders')}
               className="p-2.5 text-zinc-700 hover:text-zinc-950 transition-colors cursor-pointer rounded-full hover:bg-zinc-100 relative"
               aria-label="Account"
-              title={isAdmin ? "Admin Console" : "Customer Orders"}
+              title="Track Orders"
             >
               <User className="w-5 h-5" />
-              {isAdmin && (
-                <span className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-[#B89047] rounded-full ring-2 ring-white" />
-              )}
             </button>
 
             {/* Shopping Bag Button with Live Badge */}
@@ -470,13 +461,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <User className="w-4 h-4 text-zinc-500" />
               <span>Track Orders & Account</span>
-            </button>
-            <button
-              onClick={() => { onNavigate(isAdmin ? 'admin-dashboard' : 'admin-login'); setMobileMenuOpen(false); }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[#B89047] hover:bg-zinc-100 font-medium"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{isAdmin ? 'Admin Dashboard' : 'Merchant Login'}</span>
             </button>
           </div>
         </div>
