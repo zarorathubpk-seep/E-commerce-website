@@ -23,47 +23,39 @@ let cachedProducts: Product[] = [...INITIAL_PRODUCTS];
 let cachedCategories: Category[] = [...INITIAL_CATEGORIES];
 let cachedOrders: Order[] = [];
 
+// Timeout helper to prevent Firestore hangs
+const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))
+  ]);
+};
+
 /**
- * Initialize and seed Firestore if empty
+ * Initialize and fetch Firestore data with offline/timeout resilience
  */
 export async function initializeStoreData(): Promise<{ products: Product[]; categories: Category[] }> {
   try {
-    // 1. Fetch categories
-    const catSnapshot = await getDocs(collection(db, CATEGORIES_COL)).catch(err => {
-      handleFirestoreError(err, OperationType.LIST, CATEGORIES_COL);
+    // 1. Fetch categories with 2.5s safety timeout
+    const catPromise = getDocs(collection(db, CATEGORIES_COL)).catch(err => {
+      console.warn('Could not read categories from Firestore:', err);
+      return null;
     });
+    const catSnapshot = await withTimeout(catPromise, 2500, null);
 
-    if (catSnapshot && !catSnapshot.empty && catSnapshot.size >= INITIAL_CATEGORIES.length) {
+    if (catSnapshot && !catSnapshot.empty) {
       cachedCategories = catSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Category));
-    } else {
-      // Seed all initial marketplace categories
-      const batch = writeBatch(db);
-      for (const cat of INITIAL_CATEGORIES) {
-        batch.set(doc(db, CATEGORIES_COL, cat.id), cat);
-      }
-      await batch.commit().catch(err => {
-        console.warn('Could not batch write initial categories to Firestore:', err);
-      });
-      cachedCategories = [...INITIAL_CATEGORIES];
     }
 
-    // 2. Fetch products
-    const prodSnapshot = await getDocs(collection(db, PRODUCTS_COL)).catch(err => {
-      handleFirestoreError(err, OperationType.LIST, PRODUCTS_COL);
+    // 2. Fetch products with 2.5s safety timeout
+    const prodPromise = getDocs(collection(db, PRODUCTS_COL)).catch(err => {
+      console.warn('Could not read products from Firestore:', err);
+      return null;
     });
+    const prodSnapshot = await withTimeout(prodPromise, 2500, null);
 
-    if (prodSnapshot && !prodSnapshot.empty && prodSnapshot.size >= 12) {
+    if (prodSnapshot && !prodSnapshot.empty) {
       cachedProducts = prodSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product));
-    } else {
-      // Seed all initial marketplace products
-      const batch = writeBatch(db);
-      for (const prod of INITIAL_PRODUCTS) {
-        batch.set(doc(db, PRODUCTS_COL, prod.id), prod);
-      }
-      await batch.commit().catch(err => {
-        console.warn('Could not batch write initial products to Firestore:', err);
-      });
-      cachedProducts = [...INITIAL_PRODUCTS];
     }
   } catch (error) {
     console.warn('Using local store data fallback:', error);

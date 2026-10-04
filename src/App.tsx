@@ -17,6 +17,7 @@ import { initializeStoreData, getProducts, getCategories, getOrders } from './se
 import { Product, Category, Order, ViewMode } from './types';
 import { Sparkles, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { ADMIN_EMAIL } from './config/admin';
+import { INITIAL_PRODUCTS, INITIAL_CATEGORIES } from './data/sampleData';
 
 const AppContent: React.FC = () => {
   const { toast } = useCart();
@@ -26,11 +27,12 @@ const AppContent: React.FC = () => {
   const [viewParam, setViewParam] = useState<string | undefined>(undefined);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  // Instant initial catalog to guarantee zero blank/loading screen
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [orders, setOrders] = useState<Order[]>([]);
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Initialize public store catalog from Firestore
   const loadStoreData = async () => {
@@ -161,82 +163,70 @@ const AppContent: React.FC = () => {
 
       {/* Main Content Router */}
       <main className="flex-1">
-        {loading ? (
-          <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-            <div className="w-10 h-10 border-2 border-[#B89047] border-t-transparent rounded-full animate-spin" />
-            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-[#B89047] font-semibold">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Initializing Zarorat Hub...</span>
-            </div>
-          </div>
-        ) : (
-          <>
-            {currentView === 'home' && (
-              <HomePage
-                products={products}
-                categories={categories}
-                onNavigate={handleNavigate}
-                onSelectCategory={setSelectedCategory}
-              />
-            )}
+        {currentView === 'home' && (
+          <HomePage
+            products={products}
+            categories={categories}
+            onNavigate={handleNavigate}
+            onSelectCategory={setSelectedCategory}
+          />
+        )}
 
-            {currentView === 'shop' && (
-              <ShopPage
-                products={products}
-                categories={categories}
-                selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
-                onNavigate={handleNavigate}
-                filterParam={viewParam}
-              />
-            )}
+        {currentView === 'shop' && (
+          <ShopPage
+            products={products}
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+            onNavigate={handleNavigate}
+            filterParam={viewParam}
+          />
+        )}
 
-            {currentView === 'product-detail' && activeProduct && (
-              <ProductDetailPage
-                product={activeProduct}
-                allProducts={products}
-                onNavigate={handleNavigate}
-                onSelectCategory={setSelectedCategory}
-              />
-            )}
+        {currentView === 'product-detail' && activeProduct && (
+          <ProductDetailPage
+            product={activeProduct}
+            allProducts={products}
+            onNavigate={handleNavigate}
+            onSelectCategory={setSelectedCategory}
+          />
+        )}
 
-            {currentView === 'cart' && (
-              <CartPage onNavigate={handleNavigate} />
-            )}
+        {currentView === 'cart' && (
+          <CartPage onNavigate={handleNavigate} />
+        )}
 
-            {currentView === 'checkout' && (
-              <CheckoutPage
-                onNavigate={handleNavigate}
-                onOrderPlaced={handleOrderPlaced}
-              />
-            )}
+        {currentView === 'checkout' && (
+          <CheckoutPage
+            onNavigate={handleNavigate}
+            onOrderPlaced={handleOrderPlaced}
+          />
+        )}
 
-            {currentView === 'order-confirmation' && (
-              <OrderConfirmationPage
-                orderId={viewParam}
-                initialOrder={placedOrder}
-                onNavigate={handleNavigate}
-              />
-            )}
+        {currentView === 'order-confirmation' && (
+          <OrderConfirmationPage
+            orderId={viewParam}
+            initialOrder={placedOrder}
+            onNavigate={handleNavigate}
+          />
+        )}
 
-            {currentView === 'my-orders' && (
-              <MyOrdersPage onNavigate={handleNavigate} />
-            )}
+        {currentView === 'my-orders' && (
+          <MyOrdersPage onNavigate={handleNavigate} />
+        )}
 
-            {currentView.startsWith('admin-') && !isAdmin && (
-              <AdminLogin onNavigate={handleNavigate} />
-            )}
+        {currentView.startsWith('admin-') && !isAdmin && (
+          <AdminLogin onNavigate={handleNavigate} />
+        )}
 
-            {isAdminView && (
-              <AdminDashboard
-                products={products}
-                categories={categories}
-                orders={orders}
-                onRefreshData={loadStoreData}
-                onNavigate={handleNavigate}
-              />
-            )}
-          </>
+        {isAdminView && (
+          <AdminDashboard
+            products={products}
+            categories={categories}
+            orders={orders}
+            onRefreshData={loadStoreData}
+            onNavigate={handleNavigate}
+          />
         )}
       </main>
 

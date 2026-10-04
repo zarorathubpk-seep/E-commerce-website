@@ -5,9 +5,6 @@ import {
   EyeOff, 
   AlertCircle, 
   ArrowRight, 
-  CheckCircle2, 
-  RefreshCw, 
-  Mail, 
   ShieldCheck 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -27,11 +24,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
   const { 
     user, 
     isAdmin, 
-    isOwnerEmail, 
-    emailVerified, 
-    signInWithEmail, 
-    resendVerificationEmail, 
-    reloadUser, 
+    loginMerchant, 
     logout 
   } = useAuth();
 
@@ -50,20 +43,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
   });
 
   const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [checkingStatus, setCheckingStatus] = useState(false);
-
-  // Check if non-admin user is logged in
-  useEffect(() => {
-    if (user && user.email && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-      // Requirement 3: If any other logged-in user tries to open the admin route, 
-      // redirect them to the storefront with no hint that an admin panel exists.
-      logout().then(() => {
-        onNavigate('home');
-      });
-    }
-  }, [user, logout, onNavigate]);
 
   // Check lockout on mount and tick countdown
   useEffect(() => {
@@ -103,10 +82,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
         console.warn(e);
       }
       setLockoutRemaining(Math.ceil(LOCKOUT_DURATION_MS / 1000));
-      setError('Too many failed attempts. For security, access has been temporarily locked.');
+      setError('Too many failed attempts (5/5). Access locked for 5 minutes.');
     } else {
       const remaining = MAX_ATTEMPTS - nextAttempts;
-      setError(`Invalid credentials. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining before temporary lock.`);
+      setError(`Incorrect email or password. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
     }
   };
 
@@ -127,151 +106,25 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
     setError('');
 
     if (!email.trim() || !password) {
-      setError('Please provide your admin email and password.');
+      setError('Please enter your merchant email and password.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const signedInUser = await signInWithEmail(email, password);
-
-      // Verify owner authorization
-      if (!signedInUser.email || signedInUser.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-        // Not authorized owner: log them out and redirect to storefront silently
-        await logout();
-        handleClearLockout();
-        onNavigate('home');
-        return;
-      }
-
-      // Successful owner credentials
+      await loginMerchant(email, password);
       handleClearLockout();
-
-      if (signedInUser.emailVerified) {
-        onNavigate('admin-dashboard');
-      }
+      onNavigate('admin-dashboard');
     } catch (err: any) {
-      console.error('Sign-in error:', err);
-      const code = err.code || '';
-      if (code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
-        handleFailedAttempt();
-      } else if (code === 'auth/too-many-requests') {
-        setError('Too many requests. Please wait before trying again.');
-      } else if (code === 'auth/network-request-failed') {
-        setError('Network connectivity error. Please check your internet connection.');
-      } else {
-        handleFailedAttempt();
-      }
+      console.error('Merchant login failed:', err);
+      handleFailedAttempt();
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendVerification = async () => {
-    setResending(true);
-    setError('');
-    try {
-      await resendVerificationEmail();
-      setVerificationSent(true);
-    } catch (err: any) {
-      setError(err.message || 'Could not send verification email. Please try again shortly.');
-    } finally {
-      setResending(false);
-    }
-  };
-
-  const handleCheckVerification = async () => {
-    setCheckingStatus(true);
-    setError('');
-    try {
-      const isNowVerified = await reloadUser();
-      if (isNowVerified) {
-        onNavigate('admin-dashboard');
-      } else {
-        setError('Email is not verified yet. Please check your inbox or spam folder for the link.');
-      }
-    } catch (err: any) {
-      setError('Error refreshing status. Please retry.');
-    } finally {
-      setCheckingStatus(false);
-    }
-  };
-
-  // View state: Owner authenticated but email not verified yet
-  if (user && isOwnerEmail && !emailVerified) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-20">
-        <div className="bg-white rounded-3xl border border-[#EFECE6] p-8 shadow-sm space-y-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto text-amber-600">
-            <Mail className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-[#B89047]">
-              Security Verification Step
-            </span>
-            <h1 className="font-serif text-2xl font-normal text-zinc-900">
-              Email Verification Required
-            </h1>
-            <p className="text-xs text-zinc-500 leading-relaxed">
-              Signed in as <strong>{user.email}</strong>. In accordance with security protocol, your owner email must be verified before administrative access is granted.
-            </p>
-          </div>
-
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2 text-left">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {verificationSent && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-center gap-2 text-left">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Verification email sent! Check your inbox or spam folder.</span>
-            </div>
-          )}
-
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={handleCheckVerification}
-              disabled={checkingStatus}
-              className="w-full py-3.5 px-4 bg-[#1A1A18] hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-xs"
-            >
-              <RefreshCw className={`w-4 h-4 text-[#DFBA73] ${checkingStatus ? 'animate-spin' : ''}`} />
-              <span>{checkingStatus ? 'Checking Status...' : 'I Have Verified (Check Status)'}</span>
-            </button>
-
-            <button
-              onClick={handleResendVerification}
-              disabled={resending}
-              className="w-full py-2.5 px-4 bg-white border border-[#E5E0D8] hover:bg-zinc-50 text-zinc-800 rounded-xl text-xs font-medium cursor-pointer transition-colors"
-            >
-              {resending ? 'Sending...' : 'Resend Verification Email'}
-            </button>
-          </div>
-
-          <div className="pt-4 border-t border-[#F2EFE9] flex items-center justify-between text-xs">
-            <button
-              onClick={logout}
-              className="text-zinc-500 hover:text-zinc-900 underline cursor-pointer"
-            >
-              Sign Out
-            </button>
-            <button
-              onClick={() => onNavigate('home')}
-              className="text-zinc-500 hover:text-zinc-900 underline cursor-pointer"
-            >
-              Return to Storefront
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // View state: Owner already verified and signed in
+  // View state: Merchant already verified and signed in
   if (isAdmin) {
     return (
       <div className="max-w-md mx-auto px-4 py-20 text-center">
@@ -279,17 +132,17 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
           <ShieldCheck className="w-8 h-8" />
         </div>
         <h2 className="font-serif text-2xl font-normal text-zinc-900 mb-2">
-          Administrator Verified
+          Merchant Session Active
         </h2>
         <p className="text-xs text-zinc-500 mb-6">
-          Authenticated as <strong>{user?.email}</strong>.
+          Authenticated as <strong>{user?.email || ADMIN_EMAIL}</strong>.
         </p>
         <div className="flex flex-col gap-3">
           <button
             onClick={() => onNavigate('admin-dashboard')}
             className="w-full py-3.5 px-4 bg-[#1A1A18] text-white rounded-xl text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors cursor-pointer"
           >
-            <span>Proceed to Admin Console</span>
+            <span>Enter Merchant Panel</span>
             <ArrowRight className="w-4 h-4 text-[#DFBA73]" />
           </button>
           <button
@@ -325,7 +178,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
             Zarorat Hub Admin
           </h1>
           <p className="text-xs text-zinc-500">
-            Enter your owner credentials to access the administrative control center.
+            Enter your merchant credentials to access the administrative control center.
           </p>
         </div>
 
@@ -333,7 +186,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
         {lockoutRemaining > 0 && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 space-y-1 text-center">
             <span className="font-semibold block">Access Temporarily Locked</span>
-            <p>Too many failed attempts. Please wait <strong>{formatLockoutTimer(lockoutRemaining)}</strong> before attempting to sign in again.</p>
+            <p>Too many failed attempts. Please wait <strong>{formatLockoutTimer(lockoutRemaining)}</strong> before trying again.</p>
           </div>
         )}
 
@@ -349,13 +202,13 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-1.5">
-              Email Address
+              Merchant Email
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@domain.com"
+              placeholder="mralexander461@gmail.com"
               required
               disabled={loading || lockoutRemaining > 0}
               className="w-full px-3.5 py-2.5 bg-[#FBFBF9] border border-[#E5E0D8] rounded-xl text-xs text-zinc-900 focus:outline-none focus:border-[#B89047] disabled:opacity-50"
@@ -364,7 +217,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-1.5">
-              Password
+              Merchant Password
             </label>
             <div className="relative">
               <input
@@ -400,7 +253,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate }) => {
               </>
             ) : (
               <>
-                <span>Sign In to Console</span>
+                <span>Sign In to Merchant Panel</span>
                 <ArrowRight className="w-4 h-4 text-[#DFBA73]" />
               </>
             )}

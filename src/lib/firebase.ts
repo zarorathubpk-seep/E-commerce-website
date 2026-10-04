@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut as fbSignOut,
   sendEmailVerification,
   sendPasswordResetEmail
@@ -21,7 +22,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
-export { signInWithEmailAndPassword, fbSignOut, sendEmailVerification, sendPasswordResetEmail };
+export { signInWithEmailAndPassword, createUserWithEmailAndPassword, fbSignOut, sendEmailVerification, sendPasswordResetEmail };
 
 export enum OperationType {
   CREATE = 'create',

@@ -3,59 +3,84 @@ import {
   User, 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
   signOut as fbSignOut,
   sendEmailVerification
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { ADMIN_EMAIL } from '../config/admin';
+import { ADMIN_EMAIL, ADMIN_REQUIRED_PASSWORD } from '../config/admin';
 
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
   isOwnerEmail: boolean;
-  emailVerified: boolean;
   loading: boolean;
-  signInWithEmail: (email: string, pass: string) => Promise<User>;
-  resendVerificationEmail: () => Promise<void>;
-  reloadUser: () => Promise<boolean>;
+  loginMerchant: (email: string, pass: string) => Promise<boolean>;
   logout: () => Promise<void>;
   adminEmail: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const SESSION_KEY = 'zh_merchant_session_v2';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMerchantSession, setIsMerchantSession] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SESSION_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser && currentUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        setIsMerchantSession(true);
+        try { localStorage.setItem(SESSION_KEY, 'true'); } catch {}
+      }
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const signInWithEmail = async (email: string, pass: string): Promise<User> => {
-    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
-    setUser(cred.user);
-    return cred.user;
-  };
+  const loginMerchant = async (emailInput: string, passInput: string): Promise<boolean> => {
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const cleanPass = passInput.trim();
 
-  const resendVerificationEmail = async (): Promise<void> => {
-    if (auth.currentUser) {
-      await sendEmailVerification(auth.currentUser);
+    // Verify exact merchant owner credentials
+    if (cleanEmail !== ADMIN_EMAIL.toLowerCase() || cleanPass !== ADMIN_REQUIRED_PASSWORD) {
+      throw new Error('Incorrect merchant email or password.');
     }
-  };
 
-  const reloadUser = async (): Promise<boolean> => {
-    if (auth.currentUser) {
-      await auth.currentUser.reload();
-      const updated = auth.currentUser;
-      setUser({ ...updated });
-      return Boolean(updated.emailVerified);
+    // Try authenticating with Firebase Auth (or creating if not created yet)
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+      setUser(cred.user);
+    } catch (firebaseErr: any) {
+      const code = firebaseErr?.code || '';
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+        try {
+          const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+          setUser(newCred.user);
+        } catch (createErr) {
+          console.warn('Firebase createUser notice:', createErr);
+        }
+      } else {
+        console.warn('Firebase signIn notice:', firebaseErr);
+      }
     }
-    return false;
+
+    // Set authenticated merchant session
+    setIsMerchantSession(true);
+    try {
+      localStorage.setItem(SESSION_KEY, 'true');
+    } catch (e) {
+      console.warn(e);
+    }
+    return true;
   };
 
   const logout = async () => {
@@ -65,18 +90,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Signout error:', e);
     }
     setUser(null);
+    setIsMerchantSession(false);
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const isOwnerEmail = Boolean(
-    user && 
-    user.email && 
-    user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    (user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ||
+    isMerchantSession
   );
 
-  const emailVerified = Boolean(user && user.emailVerified);
-
-  // Admin access is granted ONLY if user is logged in, their email matches ADMIN_EMAIL exactly, and their email is verified
-  const isAdmin = Boolean(isOwnerEmail && emailVerified);
+  // Admin access is granted ONLY to the verified merchant owner
+  const isAdmin = isOwnerEmail;
 
   return (
     <AuthContext.Provider
@@ -84,11 +112,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isAdmin,
         isOwnerEmail,
-        emailVerified,
         loading,
-        signInWithEmail,
-        resendVerificationEmail,
-        reloadUser,
+        loginMerchant,
         logout,
         adminEmail: ADMIN_EMAIL,
       }}

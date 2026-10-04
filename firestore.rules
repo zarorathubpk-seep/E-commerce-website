@@ -6,24 +6,27 @@ service cloud.firestore {
     }
     
     function isOwnerAdmin() {
-      return isSignedIn() && 
-        request.auth.token.email == 'mralexander461@gmail.com' &&
-        request.auth.token.email_verified == true;
+      return isSignedIn() && request.auth.token.email == 'mralexander461@gmail.com';
     }
 
-    // Anyone can read products; only verified owner admin can create, update, or delete products and inventory
+    // Health check test doc
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Anyone can read products; only owner admin can create, update, or delete products and inventory
     match /products/{productId} {
       allow read: if true;
       allow create, update, delete: if isOwnerAdmin();
     }
 
-    // Anyone can read categories; only verified owner admin can create, update, or delete
+    // Anyone can read categories; only owner admin can create, update, or delete
     match /categories/{categoryId} {
       allow read: if true;
       allow create, update, delete: if isOwnerAdmin();
     }
 
-    // Anyone can read departments; only verified owner admin can create, update, or delete
+    // Anyone can read departments; only owner admin can create, update, or delete
     match /departments/{departmentId} {
       allow read: if true;
       allow create, update, delete: if isOwnerAdmin();

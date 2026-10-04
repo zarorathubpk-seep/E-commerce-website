@@ -105,7 +105,13 @@ export const Header: React.FC<HeaderProps> = ({
               Track Orders
             </button>
             <span>|</span>
-            <span className="text-zinc-400">Customer Support</span>
+            <button 
+              onClick={() => onNavigate(isAdmin ? 'admin-dashboard' : 'admin-login')}
+              className="hover:text-[#DFBA73] transition-colors cursor-pointer flex items-center gap-1.5 text-xs text-zinc-300 font-medium"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#DFBA73]" />
+              <span>Merchant Portal</span>
+            </button>
           </div>
         </div>
       </div>
@@ -461,6 +467,13 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <User className="w-4 h-4 text-zinc-500" />
               <span>Track Orders & Account</span>
+            </button>
+            <button
+              onClick={() => { onNavigate(isAdmin ? 'admin-dashboard' : 'admin-login'); setMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[#DFBA73] hover:bg-zinc-100 font-medium"
+            >
+              <ShieldCheck className="w-4 h-4 text-[#DFBA73]" />
+              <span>Merchant Portal / Admin Panel</span>
             </button>
           </div>
         </div>

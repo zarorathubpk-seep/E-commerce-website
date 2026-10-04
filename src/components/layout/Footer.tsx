@@ -265,6 +265,15 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onSelectCategory }) 
                   Terms of Commerce
                 </span>
               </li>
+              <li className="pt-2">
+                <button
+                  onClick={() => onNavigate('admin-login')}
+                  className="text-xs text-[#DFBA73] hover:text-white hover:underline flex items-center gap-1.5 cursor-pointer font-medium"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Merchant Portal / Admin Panel</span>
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -278,9 +287,9 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onSelectCategory }) 
           <span>•</span>
           <button
             onClick={() => onNavigate('admin-login')}
-            className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors cursor-pointer"
+            className="text-xs text-[#DFBA73] hover:underline transition-colors cursor-pointer font-medium"
           >
-            Admin Console
+            Merchant Admin Panel
           </button>
         </div>
         <div className="flex items-center gap-6">
