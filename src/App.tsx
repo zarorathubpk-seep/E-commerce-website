@@ -18,7 +18,7 @@ import { Product, Category, Order, ViewMode } from './types';
 import { Sparkles, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { ADMIN_EMAIL } from './config/admin';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES } from './data/sampleData';
-
+import AdBanner from './AdBanner';
 const AppContent: React.FC = () => {
   const { toast } = useCart();
   const { user, isAdmin, loading: authLoading, logout } = useAuth();
