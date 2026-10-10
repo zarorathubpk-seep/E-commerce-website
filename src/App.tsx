@@ -229,7 +229,10 @@ const AppContent: React.FC = () => {
           />
         )}
       </main>
-
+      {/* Ad banner: only on browsing pages, not cart/checkout/admin */}
+      {!isAdminView && ['home', 'shop', 'product-detail'].includes(currentView) && (
+        <AdBanner />
+      )}
       {/* Footer (Hidden on full Admin Dashboard) */}
       {!isAdminView && (
         <Footer
